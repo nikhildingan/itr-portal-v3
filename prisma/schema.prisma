@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ITRClient {
+  id               String   @id @default(cuid())
+  token            String   @unique
+  name             String
+  phone            String
+  email            String
+  pan              String
+  portalPassword   String
+  isFirstTimeFiling Boolean  @default(false)
+  aadharNumber     String?
+  bankName         String?
+  ifscCode         String?
+  accountNumber    String?
+  notes            String?
+  status           String   @default("PROCESSING")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  documents  ClientDocument[]
+  adminFiles AdminFile[]
+}
+
+model ClientDocument {
+  id        String   @id @default(cuid())
+  clientId  String
+  fileName  String
+  filePath  String
+  fileType  String
+  createdAt DateTime @default(now())
+
+  client ITRClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model AdminFile {
+  id          String   @id @default(cuid())
+  clientId    String
+  fileName    String
+  filePath    String
+  description String?
+  createdAt   DateTime @default(now())
+
+  client ITRClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
