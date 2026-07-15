@@ -101,14 +101,14 @@ export async function POST(req: NextRequest) {
     const host = req.headers.get('host') || ''
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (host ? `${proto}://${host}` : '')
     const trackLink = `${baseUrl}/?token=${token}&action=track`
-    // Send email asynchronously (don't block response)
-    sendTokenEmail(email, name, token, trackLink).catch((err) =>
-      console.error('Background email send failed:', err)
-    )
+    // Send email — MUST await in Vercel serverless (fire-and-forget gets killed)
+    const emailSent = await sendTokenEmail(email, name, token, trackLink)
+    console.log(`[SUBMIT] Email to ${email}: ${emailSent ? 'SENT' : 'FAILED'}`)
 
     return NextResponse.json({
       token,
       message: 'ITR information submitted successfully',
+      emailSent,
     })
   } catch (error) {
     console.error('Submit error:', error)

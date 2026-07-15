@@ -9,7 +9,7 @@ function getTransporter(): nodemailer.Transporter | null {
   const pass = process.env.SMTP_PASSWORD
 
   if (!user || !pass) {
-    console.warn('SMTP credentials not configured. Email sending disabled.')
+    console.error('[EMAIL] SMTP_EMAIL or SMTP_PASSWORD not set in environment variables')
     return null
   }
 
@@ -18,9 +18,25 @@ function getTransporter(): nodemailer.Transporter | null {
     port: 465,
     secure: true,
     auth: { user, pass },
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   })
 
   return transporter
+}
+
+export async function verifySMTP(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const transport = getTransporter()
+    if (!transport) return { ok: false, error: 'SMTP credentials not configured' }
+    await transport.verify()
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[EMAIL] SMTP verification failed:', msg)
+    return { ok: false, error: msg }
+  }
 }
 
 export async function sendTokenEmail(
@@ -127,7 +143,7 @@ export async function sendTokenEmail(
     console.log(`Email sent successfully to ${toEmail}`, mailResult.messageId)
     return true
   } catch (error) {
-    console.error('Failed to send email:', error)
+    console.error('[EMAIL] Failed to send email to', toEmail, ':', error)
     return false
   }
 }
