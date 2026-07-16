@@ -46,6 +46,7 @@ model AdminFile {
   fileName    String
   filePath    String
   description String?
+  fileData    Bytes?
   createdAt   DateTime @default(now())
 
   client ITRClient @relation(fields: [clientId], references: [id], onDelete: Cascade)

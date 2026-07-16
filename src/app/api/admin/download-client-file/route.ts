@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { existsSync, createReadStream } from 'fs'
 import path from 'path'
-
-const UPLOAD_DIR = '/tmp/itr-uploads'
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,10 +14,39 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'File not found' }, { status: 404 })
     }
 
+    // Serve from database (Vercel /tmp is ephemeral — files on disk don't persist)
+    if (file.fileData && file.fileData.length > 0) {
+      const ext = path.extname(file.fileName).toLowerCase()
+      const mimeMap: Record<string, string> = {
+        '.pdf': 'application/pdf',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }
+
+      return new NextResponse(file.fileData as unknown as ReadableStream, {
+        headers: {
+          'Content-Type': mimeMap[ext] || 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${file.fileName}"`,
+          'Content-Length': String(file.fileData.length),
+        },
+      })
+    }
+
+    // Fallback: if fileData is null (old uploads before this fix), try disk
+    const { existsSync, createReadStream } = await import('fs')
+    const UPLOAD_DIR = '/tmp/itr-uploads'
     const filePath = path.join(UPLOAD_DIR, file.clientId, 'admin', file.filePath)
 
     if (!existsSync(filePath)) {
-      return NextResponse.json({ error: 'File not found on disk' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'File not available. Please ask admin to re-upload.' },
+        { status: 404 }
+      )
     }
 
     const stream = createReadStream(filePath)

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
-
-const UPLOAD_DIR = '/tmp/itr-uploads'
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,9 +17,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 })
     }
 
-    const adminDir = path.join(UPLOAD_DIR, clientId, 'admin')
-    await mkdir(adminDir, { recursive: true })
-
     const files = formData.getAll('files') as File[]
     const results: Array<{ id: string; fileName: string; filePath: string; description: string | null; createdAt: Date }> = []
 
@@ -32,9 +26,9 @@ export async function POST(req: NextRequest) {
 
       const fileExt = path.extname(file.name) || '.bin'
       const uniqueName = `ADMIN_${Date.now()}_${i}${fileExt}`
-      const filePath = path.join(adminDir, uniqueName)
+
+      // Read file as buffer and store in DB (Vercel /tmp is ephemeral)
       const buffer = Buffer.from(await file.arrayBuffer())
-      await writeFile(filePath, buffer)
 
       const adminFile = await db.adminFile.create({
         data: {
@@ -42,6 +36,7 @@ export async function POST(req: NextRequest) {
           fileName: file.name,
           filePath: uniqueName,
           description: description || `Filed form ${i + 1}`,
+          fileData: buffer,
         },
       })
 
