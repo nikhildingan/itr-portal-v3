@@ -203,6 +203,34 @@ export default function AdminPanel() {
     window.open(`/api/admin/download-client-file?fileId=${fileId}`, '_blank')
   }
 
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
+
+  const handleDeleteFile = async (fileId: string) => {
+    if (!confirm('Are you sure you want to delete this uploaded form?')) return
+    setDeletingFileId(fileId)
+    try {
+      const res = await fetch('/api/admin/delete-admin-file', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId }),
+      })
+      if (res.ok) {
+        toast({ title: 'Deleted', description: 'Uploaded form removed successfully' })
+        setClients(prev => prev.map(c => ({
+          ...c,
+          adminFiles: c.adminFiles.filter(f => f.id !== fileId)
+        })))
+      } else {
+        const data = await res.json()
+        toast({ title: 'Error', description: data.error || 'Failed to delete', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Error', description: 'Network error', variant: 'destructive' })
+    } finally {
+      setDeletingFileId(null)
+    }
+  }
+
   const filtered = clients.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -493,11 +521,19 @@ export default function AdminPanel() {
                             <div className="space-y-1">
                               {client.adminFiles.map((f) => (
                                 <div key={f.id} className="flex items-center gap-2 p-2 bg-white rounded border text-xs">
-                                  <FileText className="w-3.5 h-3.5 text-green-500" />
+                                  <FileText className="w-3.5 h-3.5 text-green-500 shrink-0" />
                                   <span className="flex-1 truncate text-slate-700">{f.fileName}</span>
-                                  {f.description && <span className="text-slate-400 truncate max-w-[150px]">{f.description}</span>}
-                                  <button onClick={() => downloadClientFile(f.id)} className="text-blue-500 hover:text-blue-700">
+                                  {f.description && <span className="text-slate-400 truncate max-w-[120px]">{f.description}</span>}
+                                  <button onClick={() => downloadClientFile(f.id)} className="text-blue-500 hover:text-blue-700 shrink-0" title="Download">
                                     <Download className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteFile(f.id)}
+                                    disabled={deletingFileId === f.id}
+                                    className="text-red-400 hover:text-red-600 shrink-0 disabled:opacity-50"
+                                    title="Delete this form"
+                                  >
+                                    {deletingFileId === f.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                                   </button>
                                 </div>
                               ))}
