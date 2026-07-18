@@ -89,9 +89,11 @@ export default function AdminPanel() {
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [uploadModalId, setUploadModalId] = useState<string | null>(null)
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [uploadDesc, setUploadDesc] = useState('')
   const [uploadLoading, setUploadLoading] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [dragOver, setDragOver] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchClients = useCallback(async () => {
@@ -166,33 +168,69 @@ export default function AdminPanel() {
     }
   }
 
+  const addFiles = (newFiles: FileList | File[]) => {
+    const arr = Array.from(newFiles)
+    if (arr.length === 0) return
+    setPendingFiles(prev => [...prev, ...arr])
+  }
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
   const handleFileUpload = async (clientId: string) => {
-    const input = fileInputRef.current
-    if (!input || !input.files || input.files.length === 0) return
+    if (pendingFiles.length === 0) {
+      toast({ title: 'No Files', description: 'Please select or drop files first', variant: 'destructive' })
+      return
+    }
 
     setUploadLoading(true)
     try {
       const formData = new FormData()
       formData.append('clientId', clientId)
       formData.append('description', uploadDesc || 'Filed form')
-      Array.from(input.files).forEach((f) => formData.append('files', f))
+      pendingFiles.forEach((f) => formData.append('files', f))
 
       const res = await fetch('/api/admin/upload-files', { method: 'POST', body: formData })
       const data = await res.json()
 
       if (res.ok) {
-        toast({ title: 'Files Uploaded', description: `${data.files.length} file(s) uploaded` })
+        toast({ title: 'Files Uploaded', description: `${data.files.length} file(s) uploaded successfully` })
         setUploadModalId(null)
         setUploadDesc('')
+        setPendingFiles([])
         fetchClients()
       } else {
         toast({ title: 'Error', description: data.error, variant: 'destructive' })
       }
     } catch {
-      toast({ title: 'Error', description: 'Upload failed', variant: 'destructive' })
+      toast({ title: 'Error', description: 'Upload failed. Please try again.', variant: 'destructive' })
     } finally {
       setUploadLoading(false)
     }
+  }
+
+  const openUploadModal = (clientId: string) => {
+    setUploadModalId(clientId)
+    setUploadDesc('')
+    setPendingFiles([])
+    setDragOver(false)
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
+  const getFileIcon = (name: string) => {
+    const ext = name.split('.').pop()?.toLowerCase()
+    if (ext === 'pdf') return '📄'
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) return '🖼️'
+    if (['doc', 'docx'].includes(ext || '')) return '📝'
+    if (['xls', 'xlsx', 'csv'].includes(ext || '')) return '📊'
+    if (['zip', 'rar', '7z'].includes(ext || '')) return '🗜️'
+    return '📎'
   }
 
   const downloadZip = (clientId: string) => {
@@ -557,7 +595,7 @@ export default function AdminPanel() {
                             size="sm"
                             variant="outline"
                             className="border-green-200 text-green-700 hover:bg-green-50"
-                            onClick={() => { setUploadModalId(client.id); setUploadDesc('') }}
+                            onClick={() => openUploadModal(client.id) }}
                           >
                             <Upload className="w-4 h-4 mr-1" />
                             Upload Forms
@@ -597,7 +635,7 @@ export default function AdminPanel() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] flex flex-col"
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-blue-900">Upload Filed Forms</h3>
@@ -605,34 +643,91 @@ export default function AdminPanel() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-slate-700">Description</Label>
-                  <Input
-                    placeholder="e.g. ITR Acknowledgement, Filed Form"
-                    value={uploadDesc}
-                    onChange={(e) => setUploadDesc(e.target.value)}
-                  />
-                </div>
-                <div className="upload-zone rounded-xl p-6 text-center cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="w-8 h-8 mx-auto text-blue-400 mb-2" />
-                  <p className="text-sm text-slate-600">Click to select files</p>
-                  <p className="text-xs text-slate-400 mt-1">PDF, Images (multiple files allowed)</p>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  className="hidden"
-                  onChange={() => {}}
+
+              {/* Description */}
+              <div className="space-y-1.5 mb-4">
+                <Label className="text-slate-700 text-sm">Description</Label>
+                <Input
+                  placeholder="e.g. ITR Acknowledgement, Filed Return"
+                  value={uploadDesc}
+                  onChange={(e) => setUploadDesc(e.target.value)}
                 />
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setUploadModalId(null)} className="flex-1">Cancel</Button>
-                  <Button onClick={() => handleFileUpload(uploadModalId)} disabled={uploadLoading} className="flex-1 bg-blue-600 hover:bg-blue-700">
-                    {uploadLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Upload'}
-                  </Button>
+              </div>
+
+              {/* Drop Zone */}
+              <div
+                className={`relative rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-all duration-200 ${
+                  dragOver
+                    ? 'border-blue-500 bg-blue-50 scale-[1.02]'
+                    : 'border-slate-300 bg-slate-50/50 hover:border-blue-400 hover:bg-blue-50/50'
+                }`}
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true) }}
+                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true) }}
+                onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false) }}
+                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); addFiles(e.dataTransfer.files) }}
+              >
+                <Upload className={`w-8 h-8 mx-auto mb-2 transition-colors ${dragOver ? 'text-blue-600' : 'text-blue-400'}`} />
+                <p className="text-sm font-medium text-slate-700">
+                  {dragOver ? 'Drop files here...' : 'Drag & drop files here'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  or <span className="text-blue-600 underline">click to browse</span> — all file types supported
+                </p>
+              </div>
+
+              {/* File Preview List */}
+              {pendingFiles.length > 0 && (
+                <div className="mt-4 space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    {pendingFiles.length} file{pendingFiles.length > 1 ? 's' : ''} selected
+                  </p>
+                  {pendingFiles.map((f, i) => (
+                    <motion.div
+                      key={`${f.name}-${f.size}-${i}`}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-lg border border-slate-200 group"
+                    >
+                      <span className="text-lg leading-none">{getFileIcon(f.name)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-700 truncate">{f.name}</p>
+                        <p className="text-[11px] text-slate-400">{formatFileSize(f.size)}</p>
+                      </div>
+                      {/* Image preview thumbnail */}
+                      {f.type.startsWith('image/') && (
+                        <img
+                          src={URL.createObjectURL(f)}
+                          alt={f.name}
+                          className="w-8 h-8 rounded object-cover border border-slate-200"
+                        />
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removePendingFile(i) }}
+                        className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                        title="Remove"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  ))}
                 </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 mt-5 pt-4 border-t border-slate-100">
+                <Button variant="outline" onClick={() => setUploadModalId(null)} className="flex-1">Cancel</Button>
+                <Button
+                  onClick={() => handleFileUpload(uploadModalId!)}
+                  disabled={uploadLoading || pendingFiles.length === 0}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  {uploadLoading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Uploading...</>
+                  ) : (
+                    <><Upload className="w-4 h-4 mr-1" /> Upload {pendingFiles.length > 0 ? `(${pendingFiles.length})` : ''}</>
+                  )}
+                </Button>
               </div>
             </motion.div>
           </motion.div>
@@ -674,7 +769,14 @@ export default function AdminPanel() {
         )}
       </AnimatePresence>
 
-      <input ref={fileInputRef} type="file" multiple className="hidden" style={{ display: 'none' }} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        style={{ display: 'none' }}
+        onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = '' }}
+      />
     </motion.div>
   )
 }
